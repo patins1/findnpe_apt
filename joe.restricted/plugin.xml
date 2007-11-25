@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.2"?>
+<plugin>
+   <extension
+         id="rst"
+         point="org.eclipse.jdt.core.compilationParticipant">
+      <compilationParticipant
+            class="joe.restricted.RSTCompilationParticipant"
+            createsProblems="true"
+            id="RST"
+            requiredSourceLevel="1.5">
+    	  <managedMarker markerType="joe.restricted.problem"/>
+    	  <managedMarker markerType="org.eclipse.core.resources.problemmarker"/>
+      </compilationParticipant>
+   </extension>
+   
+    <extension id="problem" point="org.eclipse.core.resources.markers" name="Rst Problem">
+        <super type="org.eclipse.core.resources.problemmarker"/>
+        <super type="org.eclipse.core.resources.textmarker"/>
+        <persistent value="true"/>
+    </extension>
+
+    <extension
+        point="org.eclipse.jdt.ui.quickFixProcessors">
+        <quickFixProcessor
+            class="joe.restricted.RSTQuickFixProcessor"
+            id="joe.restricted.RSTQuickFixProcessor"
+            name="my processor">
+            <handledMarkerTypes>
+                <markerType id="joe.restricted.problem"/>
+            </handledMarkerTypes>
+        </quickFixProcessor>
+    </extension>
+    <extension
+          point="org.eclipse.jdt.apt.core.annotationProcessorFactory">
+       <java6processors
+             enableDefault="true">
+          <java6processor
+                class="joe.restricted.Java6Processor">
+          </java6processor>
+       </java6processors>
+    </extension> 
+</plugin>
