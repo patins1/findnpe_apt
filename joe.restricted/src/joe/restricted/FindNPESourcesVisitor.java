@@ -36,6 +36,7 @@ import org.eclipse.jdt.core.dom.ForStatement;
 import org.eclipse.jdt.core.dom.IAnnotationBinding;
 import org.eclipse.jdt.core.dom.IBinding;
 import org.eclipse.jdt.core.dom.IMemberValuePairBinding;
+import org.eclipse.jdt.core.dom.IMethodBinding;
 import org.eclipse.jdt.core.dom.ITypeBinding;
 import org.eclipse.jdt.core.dom.IVariableBinding;
 import org.eclipse.jdt.core.dom.IfStatement;
@@ -425,6 +426,42 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 		}
 	}
 
+	public void lookAtMethod(SimpleName methodName, List arguments, ASTNode methodInvocation) {
+		if (methodName.resolveBinding() instanceof IMethodBinding) {
+			IMethodBinding methodDeclaration = (IMethodBinding) methodName.resolveBinding();
+			ITypeBinding decl = methodDeclaration.getDeclaringClass();
+			if (decl != null) {
+				boolean isSolid = isSolidByAnnotation(methodName);
+				// if (!isSolid) {
+				// if (decl.getBinaryName().equals("java.util.List")) {
+				// if (methodName.toString().equals("get")) {
+				// isSolid = true;
+				// }
+				//					}
+				//				}
+				if (isSolid) {
+					setCanBeNotNull(methodInvocation);
+				}
+				boolean solidByClass = isSolidByAnnotation(decl);
+				Iterator iter = arguments.iterator();
+				int i = 0;
+				while (iter.hasNext()) {
+					Object a = iter.next();
+					IAnnotationBinding[] annos = methodDeclaration.getParameterAnnotations(i);
+					if (annos != null && a instanceof ASTNode) {
+						ASTNode argument = (ASTNode) a;
+						if (hasSolidAnnotation(annos) != null ? hasSolidAnnotation(annos) : solidByClass) {
+							requireSolid(argument);
+						}
+					}
+					i++;
+				}
+			}
+
+		}
+
+	}
+
 	public void endVisit(ClassInstanceCreation node) {
 		setCanBeNotNull(node);
 		endVisitNode(node);
@@ -577,27 +614,12 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 		if (node.getExpression() != null) {
 			requireSolid(node.getExpression());
 		}
-		if (isSolidByAnnotation(node.getName())) {
-			setCanBeNotNull(node);
-		}
-		ASTNode decl = findDeclaringNode(node.getName());
-		if (decl instanceof MethodDeclaration) {
-			MethodDeclaration methodDeclaration = (MethodDeclaration) decl;
-			Iterator iter = node.arguments().iterator();
-			for (Object p : methodDeclaration.parameters()) {
-				if (iter.hasNext()) {
-					Object a = iter.next();
-					if (p instanceof SingleVariableDeclaration && a instanceof ASTNode) {
-						SingleVariableDeclaration paramDecl = (SingleVariableDeclaration) p;
-						ASTNode argument = (ASTNode) a;
-						if (isSolidByAnnotation(paramDecl.getName())) {
-							requireSolid(argument);
-						}
-					}
-				}
-			}
-		}
+		lookAtMethod(node.getName(), node.arguments(), node);
+		endVisitNode(node);
+	}
 
+	public void endVisit(SuperMethodInvocation node) {
+		lookAtMethod(node.getName(), node.arguments(), node);
 		endVisitNode(node);
 	}
 
@@ -684,20 +706,39 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 				if (hasSolidAnnotation(typeBinding) != null) {
 					return hasSolidAnnotation(typeBinding);
 				}
-				ASTNode decl = findDeclaringNode(expression);
-				if (decl != null && (decl instanceof MethodDeclaration || decl.getParent() instanceof MethodDeclaration || decl.getParent() instanceof FieldDeclaration)) {
-					for (ASTNode n = decl.getParent(); n != null; n = n.getParent()) {
-						if (n instanceof TypeDeclaration) {
-							TypeDeclaration tn = (TypeDeclaration) n;
-							if (tn.resolveBinding() != null && hasSolidAnnotation(tn.resolveBinding()) != null) {
-								return hasSolidAnnotation(tn.resolveBinding());
-							}
-						}
-					}
+				ITypeBinding decl = findDeclaringClass(expression);
+				if (decl != null && hasSolidAnnotation(decl) != null) {
+					return hasSolidAnnotation(decl);
+				}
+				if (decl != null && decl.getBinaryName().equals("java.lang.String")) {
+					return true;
 				}
 			}
 		}
 		return false;
+	}
+
+	private boolean isSolidByAnnotation(ITypeBinding typeBinding) {
+		if (typeBinding != null && hasSolidAnnotation(typeBinding) != null) {
+			return hasSolidAnnotation(typeBinding);
+		}
+		return false;
+	}
+
+	private ITypeBinding findDeclaringClass(SimpleName name) {
+		ASTNode decl = findDeclaringNode(name);
+		if (decl != null && decl.getParent() instanceof MethodDeclaration) {
+			name = ((MethodDeclaration) decl.getParent()).getName();
+		}
+		if (name.resolveBinding() instanceof IMethodBinding) {
+			IMethodBinding binding = (IMethodBinding) name.resolveBinding();
+			return binding.getDeclaringClass();
+		}
+		if (name.resolveBinding() instanceof IVariableBinding) {
+			IVariableBinding binding = (IVariableBinding) name.resolveBinding();
+			return binding.getDeclaringClass();
+		}
+		return null;
 	}
 
 	private ASTNode findDeclaringNode(SimpleName name) {
@@ -709,6 +750,20 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 
 	private Boolean hasSolidAnnotation(IBinding typeBinding) {
 		for (IAnnotationBinding annotation : typeBinding.getAnnotations()) {
+			if (Solid.class.getSimpleName().equals(annotation.getName())) {
+				for (IMemberValuePairBinding pair : annotation.getDeclaredMemberValuePairs()) {
+					if (pair.getName().equals("value")) {
+						return (Boolean) pair.getValue();
+					}
+				}
+				return true;
+			}
+		}
+		return null;
+	}
+
+	private Boolean hasSolidAnnotation(IAnnotationBinding[] annos) {
+		for (IAnnotationBinding annotation : annos) {
 			if (Solid.class.getSimpleName().equals(annotation.getName())) {
 				for (IMemberValuePairBinding pair : annotation.getDeclaredMemberValuePairs()) {
 					if (pair.getName().equals("value")) {

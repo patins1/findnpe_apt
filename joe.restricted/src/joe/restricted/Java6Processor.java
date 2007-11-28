@@ -1,9 +1,11 @@
 package joe.restricted;
 
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
 
 import javax.annotation.processing.Completion;
+import javax.annotation.processing.Messager;
 import javax.annotation.processing.ProcessingEnvironment;
 import javax.annotation.processing.Processor;
 import javax.annotation.processing.RoundEnvironment;
@@ -12,6 +14,11 @@ import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.Element;
 import javax.lang.model.element.ExecutableElement;
 import javax.lang.model.element.TypeElement;
+import javax.tools.Diagnostic;
+
+import org.eclipse.jdt.internal.apt.pluggable.core.dispatch.IdeBuildProcessingEnvImpl;
+
+import com.sun.mirror.declaration.Declaration;
 
 public class Java6Processor implements Processor {
 
@@ -51,10 +58,20 @@ public class Java6Processor implements Processor {
 
 	@Override
 	public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
-		for (TypeElement te : annotations) {
-			te.getTypeParameters();
+
+		if (processingEnv instanceof IdeBuildProcessingEnvImpl) {
+			IdeBuildProcessingEnvImpl env = (IdeBuildProcessingEnvImpl) processingEnv;
+			env = env;
 		}
-		return false;
+		Messager messager = processingEnv.getMessager();
+
+		Set<? extends Element> annotatedTypes = roundEnv.getElementsAnnotatedWith(Solid.class);
+
+		for (Element annotatedType : annotatedTypes) {
+			messager.printMessage(Diagnostic.Kind.ERROR, "msg", annotatedType);
+		}
+
+		return true;
 	}
 
 }

@@ -24,6 +24,7 @@ import org.eclipse.jdt.core.compiler.ReconcileContext;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 
+import com.sun.istack.internal.NotNull;
 import com.sun.mirror.declaration.AnnotationTypeDeclaration;
 
 public class RSTCompilationParticipant extends CompilationParticipant {
@@ -64,41 +65,41 @@ public class RSTCompilationParticipant extends CompilationParticipant {
 
 	protected void build(BuildEnv processorEnv) {
 
-//		final BuildContext[] cpResults = processorEnv.getFilesWithAnnotation();
-//		final Map<BuildContext, Set<AnnotationTypeDeclaration>> file2AnnotationDecls = new HashMap<BuildContext, Set<AnnotationTypeDeclaration>>(cpResults.length * 4 / 3 + 1);
-//		final Map<String, AnnotationTypeDeclaration> annotationDecls = processorEnv.getAllAnnotationTypes(file2AnnotationDecls);
-//		for (BuildContext bc : _allfiles) {
-//			List<CategorizedProblem> problems = new ArrayList<CategorizedProblem>();
-//			@NotNull
-//			CompilationUnit ast = processorEnv.getASTFrom(bc.getFile());
-//			ast = processorEnv.getASTFrom(bc.getFile());
-//			if (ast != null) {
-//				FindNPESourcesVisitor npeSources = new FindNPESourcesVisitor();
-//				ast.accept(npeSources);
-//				System.err.println(ast.getJavaElement().getPath());
-//				for (SolidityInfo nodeInfo : npeSources.getMustBeNotNull()) {
-//					ASTNode node = nodeInfo.getNode();
-//					String reason = "";
-//					if (nodeInfo.getReason() != null) {
-//						if (nodeInfo.getType() == SolidityType.IsNull) {
-//							reason = "(" + "\"" + nodeInfo.getReason() + "\" evaluates to null)";
-//						} else {
-//							reason = "(" + "\"" + nodeInfo.getReason() + "\" may evaluate to null)";
-//						}
-//
-//					}
-//					RSTProblem problem = new RSTProblem("This expression is required to be solid" + reason, MessagerImpl.Severity.ERROR, bc.getFile(), node.getStartPosition(), node.getLength() + node.getStartPosition() - 1, FindNPESourcesVisitor.getLine(node), null);
-//					problems.add(problem);
-//				}
-//				for (Map.Entry<SolidityInfo, Object> nodeInfo : npeSources.getConstantValue().entrySet()) {
-//					ASTNode node = nodeInfo.getKey().getNode();
-//					RSTProblem problem = new RSTProblem("This expression evaluates always to " + nodeInfo.getValue(), MessagerImpl.Severity.WARNING, bc.getFile(), node.getStartPosition(), node.getLength() + node.getStartPosition() - 1, FindNPESourcesVisitor.getLine(node), null);
-//					problems.add(problem);
-//				}
-//
-//			}
-//			bc.recordNewProblems(problems.toArray(new CategorizedProblem[] {}));
-//		}
+		final BuildContext[] cpResults = processorEnv.getFilesWithAnnotation();
+		final Map<BuildContext, Set<AnnotationTypeDeclaration>> file2AnnotationDecls = new HashMap<BuildContext, Set<AnnotationTypeDeclaration>>(cpResults.length * 4 / 3 + 1);
+		final Map<String, AnnotationTypeDeclaration> annotationDecls = processorEnv.getAllAnnotationTypes(file2AnnotationDecls);
+		for (BuildContext bc : _allfiles) {
+			List<CategorizedProblem> problems = new ArrayList<CategorizedProblem>();
+			@NotNull
+			CompilationUnit ast = processorEnv.getASTFrom(bc.getFile());
+			ast = processorEnv.getASTFrom(bc.getFile());
+			if (ast != null) {
+				FindNPESourcesVisitor npeSources = new FindNPESourcesVisitor();
+				ast.accept(npeSources);
+				System.err.println(ast.getJavaElement().getPath());
+				for (SolidityInfo nodeInfo : npeSources.getMustBeNotNull()) {
+					ASTNode node = nodeInfo.getNode();
+					String reason = "";
+					if (nodeInfo.getReason() != null) {
+						if (nodeInfo.getType() == SolidityType.IsNull) {
+							reason = "(" + "\"" + nodeInfo.getReason() + "\" evaluates to null)";
+						} else {
+							reason = "(" + "\"" + nodeInfo.getReason() + "\" may evaluate to null)";
+						}
+
+					}
+					RSTProblem problem = new RSTProblem("This expression is required to be solid" + reason, MessagerImpl.Severity.ERROR, bc.getFile(), node.getStartPosition(), node.getLength() + node.getStartPosition() - 1, FindNPESourcesVisitor.getLine(node), null);
+					problems.add(problem);
+				}
+				for (Map.Entry<SolidityInfo, Object> nodeInfo : npeSources.getConstantValue().entrySet()) {
+					ASTNode node = nodeInfo.getKey().getNode();
+					RSTProblem problem = new RSTProblem("This expression evaluates always to " + nodeInfo.getValue(), MessagerImpl.Severity.WARNING, bc.getFile(), node.getStartPosition(), node.getLength() + node.getStartPosition() - 1, FindNPESourcesVisitor.getLine(node), null);
+					problems.add(problem);
+				}
+
+			}
+			bc.recordNewProblems(problems.toArray(new CategorizedProblem[] {}));
+		}
 	}
 
 	public boolean isActive(IJavaProject project) {

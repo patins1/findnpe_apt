@@ -31,6 +31,8 @@
             </handledMarkerTypes>
         </quickFixProcessor>
     </extension>
+    
+    <!--
     <extension
           point="org.eclipse.jdt.apt.core.annotationProcessorFactory">
        <java6processors
@@ -39,5 +41,6 @@
                 class="joe.restricted.Java6Processor">
           </java6processor>
        </java6processors>
-    </extension> 
+    </extension>
+    --> 
 </plugin>
