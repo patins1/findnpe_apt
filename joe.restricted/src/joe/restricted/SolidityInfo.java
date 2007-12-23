@@ -11,7 +11,7 @@ public class SolidityInfo {
 	private SolidityType type;
 
 	public enum SolidityType {
-		MayBeNull, IsNull, IsNotNull
+		MayBeNull, IsNull, IsNotNull, IsNotNullRec
 	};
 
 	public SolidityInfo(ASTNode node, SolidityType type, ASTNode reason) {

@@ -375,11 +375,30 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 	}
 
 	private boolean canNotBeNull(SolidityInfo expression) {
-		return expression.getType() == SolidityType.IsNotNull;
+		return expression.getType() == SolidityType.IsNotNull || expression.getType() == SolidityType.IsNotNullRec;
+	}
+
+	private boolean canNotBeNullRec(SolidityInfo expression) {
+		return expression.getType() == SolidityType.IsNotNullRec;
+	}
+
+	private boolean canNotBeNullRec(SolidityType solidityType) {
+		return solidityType == SolidityType.IsNotNullRec;
+	}
+
+	private boolean canNotBeNull(SolidityType solidityType) {
+		return solidityType == SolidityType.IsNotNull || solidityType == SolidityType.IsNotNullRec;
 	}
 
 	private boolean isNull(SolidityInfo expression) {
 		return expression.getType() == SolidityType.IsNull;
+	}
+
+	private void setCanBeNotNull(ASTNode node, SolidityType solidityType) {
+		if (canNotBeNull(solidityType)) {
+			expressionsReturningNullableBecauseOf.put(node, new SolidityInfo(node, solidityType, node));
+			expressionsReturningNullableBecauseOfNegativated.put(node, new SolidityInfo(node, SolidityType.IsNull, node));
+		}
 	}
 
 	private void setCanBeNotNull(ASTNode node) {
@@ -426,23 +445,34 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 		}
 	}
 
-	public void lookAtMethod(SimpleName methodName, List arguments, ASTNode methodInvocation) {
+	public void lookAtMethod(SimpleName methodName, List arguments, ASTNode methodInvocation, Expression expression) {
 		if (methodName.resolveBinding() instanceof IMethodBinding) {
 			IMethodBinding methodDeclaration = (IMethodBinding) methodName.resolveBinding();
 			ITypeBinding decl = methodDeclaration.getDeclaringClass();
 			if (decl != null) {
-				boolean isSolid = isSolidByAnnotation(methodName);
-				// if (!isSolid) {
-				// if (decl.getBinaryName().equals("java.util.List")) {
-				// if (methodName.toString().equals("get")) {
-				// isSolid = true;
-				// }
-				//					}
-				//				}
-				if (isSolid) {
-					setCanBeNotNull(methodInvocation);
+				SolidityType isSolid = isSolidByAnnotation(methodName);
+
+				if (canNotBeNull(isSolid)) {
+					setCanBeNotNull(methodInvocation, isSolid);
+				} else if (decl.getBinaryName().equals("java.util.List") && methodName.toString().equals("get")) {
+					if (expressionsReturningNullableBecauseOf.get(expression) != null && canNotBeNullRec(expressionsReturningNullableBecauseOf.get(expression))) {
+						setCanBeNotNull(methodInvocation);
+					}
 				}
-				boolean solidByClass = isSolidByAnnotation(decl);
+
+				SolidityType solidByClass = isSolidByAnnotation(decl);
+				if (!canNotBeNull(solidByClass)) {
+					if (decl.getBinaryName().equals("java.util.List") && (methodName.toString().equals("add") || methodName.toString().equals("addAll"))) {
+						if (expressionsReturningNullableBecauseOf.get(expression) != null && canNotBeNullRec(expressionsReturningNullableBecauseOf.get(expression))) {
+							if (methodName.toString().equals("addAll")) {
+								solidByClass = SolidityType.IsNotNullRec;
+							} else {
+								solidByClass = SolidityType.IsNotNull;
+							}
+						}
+					}
+				}
+
 				Iterator iter = arguments.iterator();
 				int i = 0;
 				while (iter.hasNext()) {
@@ -450,8 +480,11 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 					IAnnotationBinding[] annos = methodDeclaration.getParameterAnnotations(i);
 					if (annos != null && a instanceof ASTNode) {
 						ASTNode argument = (ASTNode) a;
-						if (hasSolidAnnotation(annos) != null ? hasSolidAnnotation(annos) : solidByClass) {
-							requireSolid(argument);
+						SolidityType x = hasSolidAnnotation(annos);
+						if (canNotBeNull(x)) {
+							requireSolid(argument, x);
+						} else {
+							requireSolid(argument, solidByClass);
 						}
 					}
 					i++;
@@ -463,7 +496,7 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 	}
 
 	public void endVisit(ClassInstanceCreation node) {
-		setCanBeNotNull(node);
+		setCanBeNotNull(node, SolidityType.IsNotNullRec);
 		endVisitNode(node);
 	}
 
@@ -528,7 +561,9 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 	}
 
 	public void endVisit(SimpleName node) {
-		if (isSolidFinal(node) || isSolidByAnnotation(node)) {
+		if (canNotBeNull(isSolidByAnnotation(node))) {
+			setCanBeNotNull(node, isSolidByAnnotation(node));
+		} else if (isSolidFinal(node)) {
 			setCanBeNotNull(node);
 		} else if (isBoundToSolidValue(node) != null) {
 			expressionsReturningNullableBecauseOf.put(node, new SolidityInfo(node, isBoundToSolidValue(node).getType(), isBoundToSolidValue(node).getReason()));
@@ -603,9 +638,7 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 	public void endVisit(ReturnStatement node) {
 		MethodDeclaration methodDeclaration = getMethodDeclaration(node);
 		if (methodDeclaration != null) {
-			if (isSolidByAnnotation(methodDeclaration.getName())) {
-				requireSolid(node.getExpression());
-			}
+			requireSolid(node.getExpression(), isSolidByAnnotation(methodDeclaration.getName()));
 		}
 		endVisitNode(node);
 	}
@@ -614,12 +647,12 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 		if (node.getExpression() != null) {
 			requireSolid(node.getExpression());
 		}
-		lookAtMethod(node.getName(), node.arguments(), node);
+		lookAtMethod(node.getName(), node.arguments(), node, node.getExpression());
 		endVisitNode(node);
 	}
 
 	public void endVisit(SuperMethodInvocation node) {
-		lookAtMethod(node.getName(), node.arguments(), node);
+		lookAtMethod(node.getName(), node.arguments(), node, null);
 		endVisitNode(node);
 	}
 
@@ -627,9 +660,7 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 		if (node.getExpression() != null) {
 			requireSolid(node.getExpression());
 		}
-		if (isSolidByAnnotation(node.getName())) {
-			setCanBeNotNull(node);
-		}
+		setCanBeNotNull(node, isSolidByAnnotation(node.getName()));
 		endVisitNode(node);
 	}
 
@@ -654,9 +685,7 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 			if (typeBinding != null) {
 				addBinding(node, typeBinding, node.getRightHandSide());
 			}
-			if (isSolidByAnnotation(simpleName)) {
-				requireSolid(node.getRightHandSide());
-			}
+			requireSolid(node.getRightHandSide(), isSolidByAnnotation(simpleName));
 		}
 		endVisitNode(node);
 	}
@@ -668,9 +697,7 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 			if (typeBinding != null) {
 				addBinding(node, typeBinding, node.getInitializer());
 			}
-			if (isSolidByAnnotation(simpleName)) {
-				requireSolid(node.getInitializer());
-			}
+			requireSolid(node.getInitializer(), isSolidByAnnotation(simpleName));
 		}
 		endVisitNode(node);
 	}
@@ -698,31 +725,37 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 		}
 	}
 
-	private boolean isSolidByAnnotation(SimpleName expression) {
-		if (expression instanceof SimpleName) {
-			SimpleName simpleName = (SimpleName) expression;
-			IBinding typeBinding = simpleName.resolveBinding();
-			if (typeBinding != null) {
-				if (hasSolidAnnotation(typeBinding) != null) {
-					return hasSolidAnnotation(typeBinding);
-				}
-				ITypeBinding decl = findDeclaringClass(expression);
-				if (decl != null && hasSolidAnnotation(decl) != null) {
-					return hasSolidAnnotation(decl);
-				}
-				if (decl != null && decl.getBinaryName().equals("java.lang.String")) {
-					return true;
-				}
+	private void requireSolid(ASTNode expression, SolidityType requiredSolidityType) {
+		if (canNotBeNull(requiredSolidityType)) {
+			SolidityInfo info = expressionsReturningNullableBecauseOf.get(expression);
+			if (info != null && (canNotBeNull(requiredSolidityType) && !canNotBeNull(info) || canNotBeNullRec(requiredSolidityType) && !canNotBeNullRec(info))) {
+				mustBeNotNull.add(info);
 			}
 		}
-		return false;
 	}
 
-	private boolean isSolidByAnnotation(ITypeBinding typeBinding) {
+	private SolidityType isSolidByAnnotation(SimpleName simpleName) {
+		IBinding typeBinding = simpleName.resolveBinding();
+		if (typeBinding != null) {
+			if (hasSolidAnnotation(typeBinding) != null) {
+				return hasSolidAnnotation(typeBinding);
+			}
+			ITypeBinding decl = findDeclaringClass(simpleName);
+			if (decl != null && hasSolidAnnotation(decl) != null) {
+				return hasSolidAnnotation(decl);
+			}
+			if (decl != null && decl.getBinaryName().equals("java.lang.String")) {
+				return SolidityType.IsNotNull;
+			}
+		}
+		return SolidityType.MayBeNull;
+	}
+
+	private SolidityType isSolidByAnnotation(ITypeBinding typeBinding) {
 		if (typeBinding != null && hasSolidAnnotation(typeBinding) != null) {
 			return hasSolidAnnotation(typeBinding);
 		}
-		return false;
+		return SolidityType.MayBeNull;
 	}
 
 	private ITypeBinding findDeclaringClass(SimpleName name) {
@@ -748,32 +781,31 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 		return null;
 	}
 
-	private Boolean hasSolidAnnotation(IBinding typeBinding) {
-		for (IAnnotationBinding annotation : typeBinding.getAnnotations()) {
-			if (Solid.class.getSimpleName().equals(annotation.getName())) {
-				for (IMemberValuePairBinding pair : annotation.getDeclaredMemberValuePairs()) {
-					if (pair.getName().equals("value")) {
-						return (Boolean) pair.getValue();
-					}
-				}
-				return true;
-			}
-		}
-		return null;
-	}
-
-	private Boolean hasSolidAnnotation(IAnnotationBinding[] annos) {
+	private SolidityType hasSolidAnnotation(IAnnotationBinding[] annos) {
+		SolidityType result = SolidityType.MayBeNull;
 		for (IAnnotationBinding annotation : annos) {
 			if (Solid.class.getSimpleName().equals(annotation.getName())) {
+				result = SolidityType.IsNotNullRec;
 				for (IMemberValuePairBinding pair : annotation.getDeclaredMemberValuePairs()) {
 					if (pair.getName().equals("value")) {
-						return (Boolean) pair.getValue();
+						if (!(Boolean) pair.getValue()) {
+							result = SolidityType.MayBeNull;
+						}
+					}
+					if (pair.getName().equals("children")) {
+						if (!(Boolean) pair.getValue()) {
+							result = SolidityType.IsNotNull;
+						}
 					}
 				}
-				return true;
+				return result;
 			}
 		}
-		return null;
+		return result;
+	}
+
+	private SolidityType hasSolidAnnotation(IBinding typeBinding) {
+		return hasSolidAnnotation(typeBinding.getAnnotations());
 	}
 
 	private boolean isSolidFinal(SimpleName simpleName) {
