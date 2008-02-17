@@ -23,6 +23,7 @@ import org.eclipse.jdt.core.compiler.CompilationParticipant;
 import org.eclipse.jdt.core.compiler.ReconcileContext;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jdt.internal.core.hierarchy.TypeHierarchy;
 
 import com.sun.istack.internal.NotNull;
 import com.sun.mirror.declaration.AnnotationTypeDeclaration;
@@ -75,14 +76,17 @@ public class RSTCompilationParticipant extends CompilationParticipant {
 			ast = processorEnv.getASTFrom(bc.getFile());
 			if (ast != null) {
 				FindNPESourcesVisitor npeSources = new FindNPESourcesVisitor();
+				npeSources.setJavaProject(processorEnv.getJavaProject());
 				ast.accept(npeSources);
-				System.err.println(ast.getJavaElement().getPath());
+//				System.err.println(ast.getJavaElement().getPath());
 				for (SolidityInfo nodeInfo : npeSources.getMustBeNotNull()) {
 					ASTNode node = nodeInfo.getNode();
 					String reason = "";
 					if (nodeInfo.getReason() != null) {
 						if (nodeInfo.getType() == SolidityType.IsNull) {
 							reason = "(" + "\"" + nodeInfo.getReason() + "\" evaluates to null)";
+						} else if (nodeInfo.getType() == SolidityType.IsNotNull) {
+							reason = "(" + "\"" + nodeInfo.getReason() + "\" evaluates not to null but is children)";
 						} else {
 							reason = "(" + "\"" + nodeInfo.getReason() + "\" may evaluate to null)";
 						}
@@ -91,9 +95,17 @@ public class RSTCompilationParticipant extends CompilationParticipant {
 					RSTProblem problem = new RSTProblem("This expression is required to be solid" + reason, MessagerImpl.Severity.ERROR, bc.getFile(), node.getStartPosition(), node.getLength() + node.getStartPosition() - 1, FindNPESourcesVisitor.getLine(node), null);
 					problems.add(problem);
 				}
-				for (Map.Entry<SolidityInfo, Object> nodeInfo : npeSources.getConstantValue().entrySet()) {
-					ASTNode node = nodeInfo.getKey().getNode();
+				for (Map.Entry<ASTNode, Object> nodeInfo : npeSources.getConstantValue().entrySet()) {
+					ASTNode node = nodeInfo.getKey();
 					RSTProblem problem = new RSTProblem("This expression evaluates always to " + nodeInfo.getValue(), MessagerImpl.Severity.WARNING, bc.getFile(), node.getStartPosition(), node.getLength() + node.getStartPosition() - 1, FindNPESourcesVisitor.getLine(node), null);
+					problems.add(problem);
+				}
+				for (ASTNode node : npeSources.getPerformanceWarnings()) {
+					RSTProblem problem = new RSTProblem("This expression may be slow ", MessagerImpl.Severity.WARNING, bc.getFile(), node.getStartPosition(), node.getLength() + node.getStartPosition() - 1, FindNPESourcesVisitor.getLine(node), null);
+					problems.add(problem);
+				}
+				for (ASTNode node : npeSources.getSignatureProblems()) {
+					RSTProblem problem = new RSTProblem("Differs from super method signature in nullability constraints ", MessagerImpl.Severity.ERROR, bc.getFile(), node.getStartPosition(), node.getLength() + node.getStartPosition() - 1, FindNPESourcesVisitor.getLine(node), null);
 					problems.add(problem);
 				}
 

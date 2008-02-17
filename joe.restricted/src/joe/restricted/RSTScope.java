@@ -12,18 +12,24 @@ public class RSTScope {
 	public Map<IBinding, SolidityInfo> varDeclToLastValueNeg = new HashMap<IBinding, SolidityInfo>();
 
 	public void assign(RSTScope scope) {
-		this.varDeclToLastValue.clear();
-		varDeclToLastValue.putAll(scope.varDeclToLastValue);
-		this.varDeclToLastValueNeg.clear();
-		varDeclToLastValueNeg.putAll(scope.varDeclToLastValueNeg);
+		varDeclToLastValue = scope.varDeclToLastValue;
+		varDeclToLastValueNeg = scope.varDeclToLastValueNeg;
+		duplicate();
 	}
-	
+
 	public void assignNegated(RSTScope scope) {
-		this.varDeclToLastValue.clear();
-		varDeclToLastValue.putAll(scope.varDeclToLastValueNeg);
-		this.varDeclToLastValueNeg.clear();
-		varDeclToLastValueNeg.putAll(scope.varDeclToLastValue);
-		
+		varDeclToLastValue = scope.varDeclToLastValueNeg;
+		varDeclToLastValueNeg = scope.varDeclToLastValue;
+		duplicate();
+	}
+
+	private void duplicate() {
+		if (varDeclToLastValue != null) {
+			varDeclToLastValue = new HashMap<IBinding, SolidityInfo>(varDeclToLastValue);
+		}
+		if (varDeclToLastValueNeg != null) {
+			varDeclToLastValueNeg = new HashMap<IBinding, SolidityInfo>(varDeclToLastValueNeg);
+		}
 	}
 
 	public void clear() {
@@ -33,9 +39,9 @@ public class RSTScope {
 
 	public SolidityInfo getValueFor(IBinding typeBinding, boolean positive) {
 		if (positive) {
-			return varDeclToLastValue.get(typeBinding);
+			return varDeclToLastValue == null ? null : varDeclToLastValue.get(typeBinding);
 		}
-		return varDeclToLastValueNeg.get(typeBinding);
+		return varDeclToLastValueNeg == null ? null : varDeclToLastValueNeg.get(typeBinding);
 	}
 
 }
