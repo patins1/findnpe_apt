@@ -80,6 +80,8 @@ import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
 import org.eclipse.jdt.core.dom.WhileStatement;
 import org.eclipse.jdt.core.util.IModifierConstants;
+import org.eclipse.jdt.internal.core.LocalVariable;
+import org.eclipse.jdt.internal.core.SourceMethod;
 import org.eclipse.jdt.internal.core.hierarchy.TypeHierarchy;
 
 @Solid
@@ -556,6 +558,8 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 					if (!(decl.getName().equals("EClass") && methodName.equals("getEIDAttribute") || decl.getName().equals("EClass") && methodName.equals("getEStructuralFeature") || decl.getName().equals("EClassifier") && methodName.equals("getDefaultValue"))) {
 						setCanBeNotNullRec(methodInvocation);
 					}
+				} else if (decl.getBinaryName().startsWith("java.util.Arrays")) {
+					setCanBeNotNullRec(methodInvocation);					
 				}
 				if (hasInterface(decl, "java.util.List") && methodName.toString().equals("get") || decl.getBinaryName().equals("java.util.Iterator") && methodName.toString().equals("next")) {
 					if (isRec(expression)) {
@@ -914,6 +918,10 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 							}
 							if (typeOverridden == null) {
 								typeOverridden = isSolidByAnnotation(superMethod.getDeclaringClass());
+								if ("equals".equals( methodBinding.getName()) && methodBinding.getParameterTypes().length==1) {
+									typeOverridden = hasSolidAnnotation(superMethod.getParameterTypes()[i]);
+									continue;
+								}
 							}
 							if (typeOverridden != typeOverriding) {
 								signatureProblems.add((ASTNode) node.parameters().get(i));
@@ -1047,6 +1055,11 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 			}
 			ITypeBinding decl = findDeclaringClass(simpleName);
 			if (decl != null && hasSolidAnnotation(decl) != null) {
+				if (simpleName.getParent() instanceof SingleVariableDeclaration && simpleName.getParent().getParent() instanceof MethodDeclaration) {
+					MethodDeclaration methodDeclaration=(MethodDeclaration)simpleName.getParent().getParent();
+					if ("equals".equals(methodDeclaration.getName().getFullyQualifiedName()))
+						return SolidityType.MayBeNull;
+				}
 				return hasSolidAnnotation(decl);
 			}
 			if (decl != null && decl.getBinaryName().equals("java.lang.String")) {
@@ -1152,7 +1165,16 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 	}
 
 	private SolidityType hasSolidAnnotation(IBinding typeBinding) {
-		return hasSolidAnnotation(typeBinding.getAnnotations());
+		SolidityType result = hasSolidAnnotation(typeBinding.getAnnotations());
+		if (result!=null) {
+			return result;
+		}
+		if (typeBinding.getJavaElement() instanceof LocalVariable && typeBinding.getJavaElement().getParent() instanceof SourceMethod) {
+			SourceMethod sourceMethod=(SourceMethod)typeBinding.getJavaElement().getParent();
+			if ("equals".equals(sourceMethod.getElementName()))
+				return SolidityType.MayBeNull;				
+		}
+		return null;
 	}
 
 	private boolean isSolidFinal(SimpleName simpleName) {
@@ -1177,9 +1199,13 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 		ASTNode child = scoping;
 		while (scoping != null) {
 			RSTScope scope = preserver.get(scoping);
-			SolidityInfo value = scope.getValueFor(typeBinding, true);
-			if (value != null) {
-				return value;
+			if (scope!=null) {
+				SolidityInfo value = scope.getValueFor(typeBinding, true);
+				if (value != null) {
+					return value;
+				}
+			} else {
+				System.err.println("following node has no scope: "+scoping.getClass().getName());				
 			}
 			child = scoping;
 			scoping = scoping.getParent();
@@ -1205,6 +1231,10 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 
 	public List<ASTNode> getSignatureProblems() {
 		return signatureProblems;
+	}
+
+	public boolean visit(EnhancedForStatement node) {
+		return visitNode(node);
 	}
 
 }
