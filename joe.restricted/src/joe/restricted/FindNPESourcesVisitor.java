@@ -81,6 +81,7 @@ import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
 import org.eclipse.jdt.core.dom.WhileStatement;
 import org.eclipse.jdt.core.util.IModifierConstants;
 import org.eclipse.jdt.internal.core.LocalVariable;
+import org.eclipse.jdt.internal.core.SourceField;
 import org.eclipse.jdt.internal.core.SourceMethod;
 import org.eclipse.jdt.internal.core.hierarchy.TypeHierarchy;
 
@@ -434,6 +435,10 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 	private boolean canBeNull(SolidityInfo expression) {
 		return expression.getType() == SolidityType.IsNull || expression.getType() == SolidityType.MayBeNull;
 	}
+	
+	private boolean canBeNull(SolidityType expression) {
+		return expression == SolidityType.IsNull || expression == SolidityType.MayBeNull;
+	}
 
 	private boolean canNotBeNull(SolidityInfo expression) {
 		return canNotBeNull(expression.getType());
@@ -558,9 +563,13 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 					if (!(decl.getName().equals("EClass") && methodName.equals("getEIDAttribute") || decl.getName().equals("EClass") && methodName.equals("getEStructuralFeature") || decl.getName().equals("EClassifier") && methodName.equals("getDefaultValue"))) {
 						setCanBeNotNullRec(methodInvocation);
 					}
-				} else if (decl.getBinaryName().startsWith("java.util.Arrays")) {
+				} else if (decl.getBinaryName().equals("java.util.Arrays")) {
 					setCanBeNotNullRec(methodInvocation);					
-				}
+				} else if (decl.getBinaryName().equals("java.text.DateFormat")) {
+					if (!(methodName.equals("parse") && methodDeclaration.getTypeParameters().length==2)) {
+						setCanBeNotNullRec(methodInvocation);
+					}
+				} else 
 				if (hasInterface(decl, "java.util.List") && methodName.toString().equals("get") || decl.getBinaryName().equals("java.util.Iterator") && methodName.toString().equals("next")) {
 					if (isRec(expression)) {
 						setCanBeNotNullRec(methodInvocation);
@@ -739,7 +748,9 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 			setCanBeNotNullRec(node);
 		} else if (isBoundToSolidValue(node) != null) {
 			expressionsReturningNullableBecauseOf.put(node, new SolidityInfo(node, isBoundToSolidValue(node).getType(), isBoundToSolidValue(node).getReason()));
-		}
+		} else if (canBeNull(isSolidByAnnotation(node))) {
+			setCanBeNull(node, node);
+		}  
 		endVisitNode(node);
 	}
 
@@ -1053,6 +1064,12 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 			if (hasSolidAnnotation(typeBinding) != null) {
 				return hasSolidAnnotation(typeBinding);
 			}
+			if (simpleName.getParent() instanceof VariableDeclarationFragment) {
+				Expression e = ((VariableDeclarationFragment)simpleName.getParent()).getInitializer();
+				if (e!=null && e instanceof NullLiteral) {
+					return SolidityType.MayBeNull;					
+				}
+			}
 			ITypeBinding decl = findDeclaringClass(simpleName);
 			if (decl != null && hasSolidAnnotation(decl) != null) {
 				if (simpleName.getParent() instanceof SingleVariableDeclaration && simpleName.getParent().getParent() instanceof MethodDeclaration) {
@@ -1174,6 +1191,17 @@ public class FindNPESourcesVisitor extends GenericVisitor {
 			if ("equals".equals(sourceMethod.getElementName()))
 				return SolidityType.MayBeNull;				
 		}
+		if (typeBinding.getJavaElement() instanceof SourceField) {
+			SourceField sourceField=(SourceField)typeBinding.getJavaElement();
+			try {
+				if (sourceField.getConstant()!=null)
+					return SolidityType.MayBeNull;
+			} catch (JavaModelException e) {
+			}				
+		}
+//		if (typeBinding instanceof IVariableBinding && ((IVariableBinding)typeBinding).getConstantValue()!=null) {
+//			return null;
+//		}
 		return null;
 	}
 

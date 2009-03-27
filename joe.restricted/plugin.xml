@@ -8,6 +8,7 @@
             class="joe.restricted.RSTCompilationParticipant"
             createsProblems="true"
             id="RST"
+            modifiesEnvironment="false"
             requiredSourceLevel="1.5">
     	  <managedMarker markerType="joe.restricted.problem"/>
     	  <managedMarker markerType="org.eclipse.core.resources.problemmarker"/>
